@@ -202,7 +202,7 @@ static int find_relays()
 
         handle = hid_open_path(cur_dev->path);
         if (!handle) {
-            fprintf(stderr, "Unable to open relay at [%s]", cur_dev->path);
+            fprintf(stderr, "Unable to open relay at [%s]\n", cur_dev->path);
             perm_ok = 0; /* Permission issue? */
             continue;
         }
@@ -211,14 +211,18 @@ static int find_relays()
         rc = hid_get_feature_report(handle, (unsigned char*)serial, sizeof(serial));
         if (rc == -1) {
             fprintf(stderr, "Can't get serial number for relay at [%s]\n", cur_dev->path);
+            hid_close(handle);
             continue;
         }
-        if (strlen(opt_relay)>0 && strcasecmp(serial, opt_relay))
+        if (strlen(opt_relay)>0 && strcasecmp(serial, opt_relay)) {
+            hid_close(handle);
             continue;
+        }
         nports = wcstol(cur_dev->product_string+8, 0, 0);
-        if (nports <= 0)
+        if (nports <= 0) {
+            hid_close(handle);
             continue;
-        if (relay_count < MAX_RELAYS) {
+        } if (relay_count < MAX_RELAYS) {
             strncpy(relays[relay_count].serial, serial, sizeof(relays[relay_count].serial));
             relays[relay_count].nports = nports;
             strncpy(relays[relay_count].path, cur_dev->path, sizeof(relays[relay_count].path));
