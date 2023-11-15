@@ -60,12 +60,14 @@ static int relay_count = 0;
 
 /* default options */
 static char opt_relay[16] = "";          /* Serial number of relay to operate on */
+static char opt_path[16] = "";           /* USB path of relay to operate on */
 static int opt_ports  = ALL_RELAY_PORTS; /* Bitmask of relay ports to operate on */
 static int opt_action = POWER_KEEP;      /* Power action */
 static double opt_delay = 2;             /* Delay for power cycle */
 
 static const struct option long_options[] = {
     { "relay" ,   required_argument, NULL, 'l' },
+    { "path",     required_argument, NULL, 'u' },
     { "ports",    required_argument, NULL, 'p' },
     { "action",   required_argument, NULL, 'a' },
     { "delay",    required_argument, NULL, 'd' },
@@ -83,7 +85,8 @@ int print_usage()
         "Without options, show status for all relays.\n"
         "\n"
         "Options [defaults in brackets]:\n"
-        "--relay,    -l - specific relay to operate on.\n"
+        "--relay,    -l - specific relay (serial number) to operate on.\n"
+        "--path,     -u - specific relay (usb path) to operator on.\n"
         "--ports,    -p - ports to operate on [all ports].\n"
         "--action,   -a - action to off/on/cycle (0/1/2) for affected ports.\n"
         "--delay,    -d - delay for power cycle [%g sec].\n"
@@ -194,17 +197,21 @@ static int find_relays()
         if (wcsncmp(cur_dev->product_string, L"USBRelay", 7))
             continue;
 
+        if (strlen(opt_path)>0 && strcasecmp(cur_dev->path, opt_path))
+            continue;
+
         handle = hid_open_path(cur_dev->path);
         if (!handle) {
-            perror("Unable to open relay device");
+            fprintf(stderr, "Unable to open relay at [%s]\n", cur_dev->path);
             perm_ok = 0; /* Permission issue? */
             continue;
         }
 
         serial[0] = 1;
         rc = hid_get_feature_report(handle, (unsigned char*)serial, sizeof(serial));
+        hid_close(handle);
         if (rc == -1) {
-            perror("Can't get relay serial number");
+            fprintf(stderr, "Can't get serial number for relay at [%s]\n", cur_dev->path);
             continue;
         }
         if (strlen(opt_relay)>0 && strcasecmp(serial, opt_relay))
@@ -221,7 +228,6 @@ static int find_relays()
             fprintf(stderr, "Too many relays!\n");
             exit(1);
         }
-        hid_close(handle);
     }
     hid_free_enumeration(devs);
 
@@ -305,7 +311,7 @@ static int print_relay_status(struct relay_info* info, int portmask)
     int state;
     if (!info)
         return -1;
-    printf("Status for relay %s, %d ports:\n", info->serial, info->nports);
+    printf("Status for relay %s at [%s], %d ports:\n", info->serial, info->path, info->nports);
     for (port = 1; port <= info->nports; port++) {
         if (portmask > 0 && (portmask & (1 << (port-1))) == 0)
             continue;
@@ -339,6 +345,9 @@ int main(int argc, char *argv[])
             break;
         case 'l':
             strncpy(opt_relay, optarg, sizeof(opt_relay));
+            break;
+        case 'u':
+            strncpy(opt_path, optarg, sizeof(opt_path));
             break;
         case 'p':
             if (!strcasecmp(optarg, "all")) { /* all ports is the default */
