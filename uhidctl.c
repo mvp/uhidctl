@@ -209,20 +209,17 @@ static int find_relays()
 
         serial[0] = 1;
         rc = hid_get_feature_report(handle, (unsigned char*)serial, sizeof(serial));
+        hid_close(handle);
         if (rc == -1) {
             fprintf(stderr, "Can't get serial number for relay at [%s]\n", cur_dev->path);
-            hid_close(handle);
             continue;
         }
-        if (strlen(opt_relay)>0 && strcasecmp(serial, opt_relay)) {
-            hid_close(handle);
+        if (strlen(opt_relay)>0 && strcasecmp(serial, opt_relay))
             continue;
-        }
         nports = wcstol(cur_dev->product_string+8, 0, 0);
-        if (nports <= 0) {
-            hid_close(handle);
+        if (nports <= 0)
             continue;
-        } if (relay_count < MAX_RELAYS) {
+        if (relay_count < MAX_RELAYS) {
             strncpy(relays[relay_count].serial, serial, sizeof(relays[relay_count].serial));
             relays[relay_count].nports = nports;
             strncpy(relays[relay_count].path, cur_dev->path, sizeof(relays[relay_count].path));
@@ -231,7 +228,6 @@ static int find_relays()
             fprintf(stderr, "Too many relays!\n");
             exit(1);
         }
-        hid_close(handle);
     }
     hid_free_enumeration(devs);
 
