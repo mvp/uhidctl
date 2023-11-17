@@ -60,18 +60,20 @@ static int relay_count = 0;
 
 /* default options */
 static char opt_relay[16] = "";          /* Serial number of relay to operate on */
+static char opt_newserial[16] = "";      /* New serial number to assign, only used for -s */
 static int opt_ports  = ALL_RELAY_PORTS; /* Bitmask of relay ports to operate on */
 static int opt_action = POWER_KEEP;      /* Power action */
 static double opt_delay = 2;             /* Delay for power cycle */
 
 static const struct option long_options[] = {
-    { "relay" ,   required_argument, NULL, 'l' },
-    { "ports",    required_argument, NULL, 'p' },
-    { "action",   required_argument, NULL, 'a' },
-    { "delay",    required_argument, NULL, 'd' },
-    { "version",  no_argument,       NULL, 'v' },
-    { "help",     no_argument,       NULL, 'h' },
-    { 0,          0,                 NULL, 0   },
+    { "relay" ,    required_argument, NULL, 'l' },
+    { "ports",     required_argument, NULL, 'p' },
+    { "action",    required_argument, NULL, 'a' },
+    { "delay",     required_argument, NULL, 'd' },
+    { "setserial", required_argument, NULL, 's' },
+    { "version",   no_argument,       NULL, 'v' },
+    { "help",      no_argument,       NULL, 'h' },
+    { 0,           0,                 NULL, 0   },
 };
 
 
@@ -83,12 +85,13 @@ int print_usage()
         "Without options, show status for all relays.\n"
         "\n"
         "Options [defaults in brackets]:\n"
-        "--relay,    -l - specific relay to operate on.\n"
-        "--ports,    -p - ports to operate on [all ports].\n"
-        "--action,   -a - action to off/on/cycle (0/1/2) for affected ports.\n"
-        "--delay,    -d - delay for power cycle [%g sec].\n"
-        "--version,  -v - print program version.\n"
-        "--help,     -h - print this text.\n"
+        "--relay,     -l - specific relay to operate on.\n"
+        "--ports,     -p - ports to operate on [all ports].\n"
+        "--action,    -a - action to off/on/cycle (0/1/2) for affected ports.\n"
+        "--delay,     -d - delay for power cycle [%g sec].\n"
+        "--setserial, -s - set new relay serial number.\n"
+        "--version,   -v - print program version.\n"
+        "--help,      -h - print this text.\n"
         "\n"
         "Send bugs and requests to: https://github.com/mvp/uhidctl\n"
         "version: %s\n",
@@ -295,6 +298,41 @@ static int set_port_state(struct relay_info* info, int port, int state)
 
 
 /*
+ * Set new relay serial number.
+ * Returns 0 on success, -1 if error occured.
+ */
+
+static int set_serial(struct relay_info* info, char* newserial)
+{
+    int rc = -1;
+    hid_device *handle;
+    unsigned char buf[9] = {0, 0xFA};
+    if (strlen(newserial) > 5) {
+        fprintf(stderr, "New serial number %s length must be <=5!\n", newserial);
+        return -1;
+    }
+    /* Check if serial number is already what is requested: */
+    if (!strcmp(info->serial, newserial)) {
+        printf("Relay %s is already renamed to %s\n", relays[0].serial, opt_newserial);
+        return 0;
+    }
+    strncpy((char *) buf+2, newserial, sizeof(buf) - 2);
+    if (!info)
+        return -1;
+    handle = hid_open_path(info->path);
+    if (!handle)
+        return -1;
+    rc = hid_write(handle, buf, sizeof(buf));
+    hid_close(handle);
+    if (rc > 0) {
+        printf("Relay %s has been renamed to %s\n", relays[0].serial, opt_newserial);
+        return 0;
+    }
+    return -1;
+}
+
+
+/*
  * Print status for relay port(s).
  * If portmask is 0, show all ports.
  */
@@ -324,7 +362,7 @@ int main(int argc, char *argv[])
     int i;
 
     for (;;) {
-        c = getopt_long(argc, argv, "a:d:p:l:hv", long_options, &option_index);
+        c = getopt_long(argc, argv, "a:d:p:l:s:hv", long_options, &option_index);
         if (c == -1)
             break;  /* no more options left */
         switch (c) {
@@ -339,6 +377,9 @@ int main(int argc, char *argv[])
             break;
         case 'l':
             strncpy(opt_relay, optarg, sizeof(opt_relay));
+            break;
+        case 's':
+            strncpy(opt_newserial, optarg, sizeof(opt_newserial));
             break;
         case 'p':
             if (!strcasecmp(optarg, "all")) { /* all ports is the default */
@@ -402,6 +443,24 @@ int main(int argc, char *argv[])
             "Run with -h to get usage info.\n"
         );
         rc = 1;
+        goto cleanup;
+    }
+
+    if (strlen(opt_newserial) > 0) {
+        if (relay_count == 1) {
+            rc = set_serial(relays, opt_newserial);
+            if (rc) {
+                fprintf(stderr,
+                    "Error setting new serial number!\n"
+                );
+                rc = 1;
+            }
+        } else {
+            fprintf(stderr,
+                "Choose only one relay to set new serial number!\n"
+            );
+            rc = 1;
+        }
         goto cleanup;
     }
 
